@@ -9,9 +9,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define EXTRA_SIZE 256
-#define BLOCK_SIZE 128
-#define BUF_SIZE 128
+#define EXTRASIZE 256
+#define BLOCKSIZE 128
+#define BUFSIZE 128
 
 struct header {
   uint64_t size;
@@ -24,10 +24,10 @@ void errorr(const char *message) {
 }
 
 void printc(char *format, void *data, size_t ds) {
-  char buf[BUF_SIZE];
+  char buf[BUFSIZE];
 
   int len =
-      snprintf(buf, BUF_SIZE, format, ds == sizeof(uint64_t) ? *(uint64_t *)data : *(void **)data);
+      snprintf(buf, BUFSIZE, format, ds == sizeof(uint64_t) ? *(uint64_t *)data : *(void **)data);
 
   if (len < 0) {
     errorr("snprintf");
@@ -38,19 +38,19 @@ void printc(char *format, void *data, size_t ds) {
 
 int main(void) {
   // Request 256 bytes from the heap.
-  void *start = sbrk(EXTRA_SIZE);
+  void *start = sbrk(EXTRASIZE);
 
   if (start == (void *)-1) {
     errorr("sbrk");
   }
 
   struct header *first = (struct header *)start;
-  struct header *second = (struct header *)((char *)start + BLOCK_SIZE);
+  struct header *second = (struct header *)((char *)start + BLOCKSIZE);
 
-  first->size = BLOCK_SIZE;
+  first->size = BLOCKSIZE;
   first->next = NULL;
 
-  second->size = BLOCK_SIZE;
+  second->size = BLOCKSIZE;
   second->next = first;
 
   printc("first block:       %p\n", &first, sizeof(first));
@@ -63,7 +63,7 @@ int main(void) {
   printc("second block next: %p\n", &second->next, sizeof(second->next));
 
   size_t header_size = sizeof(struct header);
-  size_t ds = BLOCK_SIZE - header_size;
+  size_t ds = BLOCKSIZE - header_size;
 
   char *fd = (char *)first + header_size;
   char *sd = (char *)second + header_size;
