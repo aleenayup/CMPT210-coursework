@@ -1,3 +1,30 @@
+/*
+Questions to answer at top of client.c:
+(You should not need to change the code in client.c)
+1. What is the address of the server it is trying to connect to (IP address and port number).
+
+server address: 127.0.0.1
+port 8000
+ADOR defines IP address
+port is for port number
+
+2. Is it UDP or TCP? How do you know?
+
+it is TCP because socket uses SOCKSTREAM and makes  TCP socket
+
+3. The client is going to send some data to the server. Where does it get this data from? How can
+you tell in the code?
+
+it gets its data from the keyboard
+the read funtion reads from STDIN FILENO into the buf and write sends the buffer to the server
+
+4. How does the client program end? How can you tell that in the code?
+
+program ends when read returns and 0 or error happens
+it closes the socket and calls exit(EXITSUCESS)
+
+*/
+
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,12 +99,12 @@ int main() {
     exit(EXIT_FAILURE);                                                                            \
   } while (0)
 
-// Shared counters for: total # messages, and counter of clients (used for
-// assigning client IDs)
+// Shared counters for: total # messages, and counter of clients
+// (used for assigning client IDs)
 int total_message_count = 0;
 int client_id_counter = 1;
 
-// Mutexs to protect above global state.
+// Mutexes to protect above global state.
 pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t client_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -89,8 +116,36 @@ struct client_info {
 void *handle_client(void *arg) {
   struct client_info *client = (struct client_info *)arg;
 
-  // TODO: print the message received from client
-  // TODO: increase total_message_count per message
+  int cfd = client->cfd;
+  int client_id = client->client_id;
+
+  free(client);
+
+  printf("Starting thread for client %d on socket FD %d\n", client_id, cfd);
+
+  char buf[BUF_SIZE];
+  ssize_t num_read;
+
+  while ((num_read = read(cfd, buf, BUF_SIZE - 1)) > 0) {
+
+    buf[num_read] = '\0';
+
+    pthread_mutex_lock(&count_mutex);
+    total_message_count++;
+    int current_count = total_message_count;
+    pthread_mutex_unlock(&count_mutex);
+
+    printf("Msg #%4d; Client ID %d: %s", current_count, client_id, buf);
+    fflush(stdout);
+  }
+
+  if (num_read == -1) {
+    perror("read");
+  }
+
+  close(cfd);
+
+  printf("Ending thread for client %d\n", client_id);
 
   return NULL;
 }
@@ -100,6 +155,7 @@ int main() {
   int sfd;
 
   sfd = socket(AF_INET, SOCK_STREAM, 0);
+
   if (sfd == -1) {
     handle_error("socket");
   }
@@ -118,9 +174,45 @@ int main() {
   }
 
   for (;;) {
-    // TODO: create a new thread when a new connection is encountered
-    // TODO: call handle_client() when launching a new thread, and provide
-    // client_info
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    int cfd = accept(sfd, (struct sockaddr *)&client_addr, &client_len);
+
+    if (cfd == -1) {
+      perror("accept");
+      continue;
+    }
+
+    pthread_mutex_lock(&client_id_mutex);
+    int new_client_id = client_id_counter;
+    client_id_counter++;
+    pthread_mutex_unlock(&client_id_mutex);
+
+    printf("New client created! ID %d on socket FD %d\n", new_client_id, cfd);
+
+    struct client_info *client = malloc(sizeof(struct client_info));
+
+    if (client == NULL) {
+      perror("malloc");
+      close(cfd);
+      continue;
+    }
+
+    client->cfd = cfd;
+    client->client_id = new_client_id;
+
+    pthread_t thread;
+
+    if (pthread_create(&thread, NULL, handle_client, client) != 0) {
+      perror("pthread_create");
+      close(cfd);
+      free(client);
+      continue;
+    }
+
+    pthread_detach(thread);
   }
 
   if (close(sfd) == -1) {
